@@ -56,11 +56,11 @@ struct stepMotor_dev
     struct gpio_desc *ch2_b;
 
 };
-
+struct timer_list stepMotor_timer;
 static struct task_struct *stepMotor_task;
 static struct stepMotor_dev stepMotorDev;
 static stepMotor_workmode *mode;
-struct timer_list stepMotor_timer;
+
 
 static void stepMotor_ctrl(char i)
 {
@@ -97,7 +97,7 @@ static int stepMotor_Run(void)
     else                          stepMotor_ctrl(val_step[8 - stepMotorDev.step]);  /* 反转 */
     stepMotorDev.step++;
     if(stepMotorDev.step > 8) stepMotorDev.step = 0;
-    /* 修改定时器时间并运行 */
+    /* 创建定时器时间并运行 */
     init_timer(&stepMotor_timer);
     stepMotor_timer.function = stepMotor_timer_handler;
     stepMotor_timer.data = 0;
@@ -123,6 +123,11 @@ static int stepMotor_thread(void *data)
     return 0;
 }
 
+/*********************************
+          ↑ 驱动调用 ↑
+   ↓ platform总线设备驱动框架 ↓
+*********************************/
+#if 0
 /*
   * @description    : 从设备读取数据
   * @param - filp   : 要打开的设备文件(文件描述符)
@@ -133,10 +138,13 @@ static int stepMotor_thread(void *data)
   */
 static ssize_t stepMotor_read(struct file *filp,char __user *buf,size_t cnt, loff_t *off)
 { 
-    int err = 0;
-    return err;
+  int err;
+  void *p;
+  
+  err = copy_to_user(p, buf, cnt);
+  return err;
 }
-
+#endif
 static ssize_t stepMotor_write(struct file *file, const char __user *buf, size_t size, loff_t *offset)
 {
     int err;
@@ -149,7 +157,6 @@ static ssize_t stepMotor_write(struct file *file, const char __user *buf, size_t
     {
       err = copy_from_user(mode,buf,sizeof(stepMotor_workmode));
       if(!err) printk(KERN_ERR"%d Byte wait to copy!\n",err);
-      stepMotorDev.timer_expires_offset = (((HZ*mode->stepInterval)*timer_deviation)/(1000*timer_deviation));
       return err;
     }
 }
@@ -196,11 +203,16 @@ static int stepMotor_release(struct inode *inode,struct file *filp)
     return 0;
 }
 
+/* 设备树匹配列表 */
+static const struct of_device_id stepMotor_of_match[]={
+    {.compatible ="fsl,my_stepMotor_drv"},
+    {}
+};
 
 static const struct file_operations stepMotor_ops ={
     .owner   = THIS_MODULE,
     .open    = stepMotor_open,
-    .read    = stepMotor_read,
+//    .read    = stepMotor_read,
     .write   = stepMotor_write,
     .release = stepMotor_release,
 };
@@ -243,7 +255,7 @@ static int stepMotor_probe(struct platform_device *pdev)
     if(!err)
     {
         stepMotor_ProbErr(0);
-        return PTR_ERR(stepMotorDev.class);
+        return -EINVAL;
     }  
     /* 3、创建类 */
     stepMotorDev.class = class_create(THIS_MODULE, drvName);
@@ -259,15 +271,6 @@ static int stepMotor_probe(struct platform_device *pdev)
         stepMotor_ProbErr(2);
         return PTR_ERR(stepMotorDev.device);
     }
-#if 0  //使用gpios子系统 不需要获取节点
-     /* 获取设备树节点 */
-    stepMotorDev.nd = of_find_compatible_node(NULL,NULL, "fsl,my_stepMotor_drv");
-    if(stepMotorDev.nd == NULL)
-    {
-        printk( KERN_DEBUG "mySTEPmotor node not found!\n");
-        return -EINVAL;
-    }   
-#endif
     /* 获取设备树中的gpio 需要在设备树节点中定义xxx-gpios*/
     stepMotorDev.ch1_a = gpiod_get(&pdev->dev, "ch1_a", 0);
     if (IS_ERR(stepMotorDev.ch1_a)) {		dev_err(&pdev->dev, "Failed to get GPIO for ch1_a\n");	stepMotor_ProbErr(3);	return PTR_ERR(stepMotorDev.ch1_a);	}
@@ -280,13 +283,13 @@ static int stepMotor_probe(struct platform_device *pdev)
     
     /* 设置GPIO模式 */
     err = gpiod_direction_output(stepMotorDev.ch1_a,0);
-    if(err <0)  printk( KERN_ERR "can't set mode ch1_a!\n");
+    if(err <0) { printk( KERN_ERR "can't set mode ch1_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch1_b,0);
-    if(err <0)  printk( KERN_ERR "can't set mode ch1_b!\n");
+    if(err <0) { printk( KERN_ERR "can't set mode ch1_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch2_a,0);
-    if(err <0)  printk( KERN_ERR "can't set mode ch2_a!\n");
+    if(err <0) { printk( KERN_ERR "can't set mode ch2_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch2_b,0);
-    if(err <0)  printk( KERN_ERR "can't set mode ch2_b!\n");
+    if(err <0) { printk( KERN_ERR "can't set mode ch2_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     /* 将电机设置为待机状态 */
     stepMotor_stop();
     /* 设置指针 */
@@ -299,12 +302,6 @@ static int stepMotor_remove(struct platform_device *pdev)
     stepMotor_ProbErr(6);
     return 0;
 }
-
-/* 设备树匹配列表 */
-static const struct of_device_id stepMotor_of_match[]={
-    {.compatible ="fsl,my_stepMotor_drv"},
-    {}
-};
 
 /* platform_driver */
 static struct platform_driver stepMotor_pdev = {
