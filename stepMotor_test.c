@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 	/* 1. 判断参数 */
 	if (argc != 3) 
 	{
-		printf("Usage: %s <direction> <stepInterval : x (ms)>\n", argv[0]);
+		printf("Usage: %s <direction> <stepInterval>\n", argv[0]);
 		return -1;
 	}
 
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
     ret = str2num(argv[2]);
     if(ret < 2)
     {
-        printf("stepInterval must be larger than 2!\n");
+        printf("stepInterval must be larger than 16!\n");
         free(mode);
         close(fd);
         return -1;

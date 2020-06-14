@@ -90,8 +90,7 @@ static int stepMotor_Run(void)
 {
     if(stepMotorDev.step > 8 )                            return -1;            /* 判断节拍是否有效 */
     if(mode == NULL)                                      return -1;            /* 判断mode指针是否有效 */
-    if(mode->stepInterval < 2)                            return -1;            /* 判断节拍间隔设置是否有效 */
-    if(stepMotorDev.timer_expires_offset <= 0)            return -1;            /* 判断定时器偏移的值是否有效 */
+    if(mode->stepInterval < 17)                           return -1;            /* 判断节拍间隔设置是否有效 */
     if(mode->direction != 0 && mode->direction != 1)      return -1;            /* 判断方向设置是否有效 */
     else if(mode->direction == 0) stepMotor_ctrl(val_step[stepMotorDev.step]);      /* 正转 */
     else                          stepMotor_ctrl(val_step[8 - stepMotorDev.step]);  /* 反转 */
@@ -101,6 +100,7 @@ static int stepMotor_Run(void)
     init_timer(&stepMotor_timer);
     stepMotor_timer.function = stepMotor_timer_handler;
     stepMotor_timer.data = 0;
+    stepMotorDev.timer_expires_offset = ((HZ*TIMER_DEVIATION)/(TIMER_UNIT_MS*10*TIMER_DEVIATION));
     stepMotor_timer.expires = jiffies + stepMotorDev.timer_expires_offset  ;
     add_timer(&stepMotor_timer);
     /* 线程park标记 */
@@ -236,24 +236,17 @@ static int stepMotor_ProbErr(unsigned int cnt)
 
 static int stepMotor_probe(struct platform_device *pdev)
 {
-    
     int err;
     /* 1、构建设备号 */
-    if(stepMotorDev.major)
-    {
-        stepMotorDev.devid = MKDEV(stepMotorDev.major,0);
-        register_chrdev_region(stepMotorDev.devid, drvCNT,drvName);
-    }
-    else
-    {
-        alloc_chrdev_region(&stepMotorDev.devid,0, drvCNT,drvName);
-        stepMotorDev.major = MAJOR(stepMotorDev.devid);
-    }
+    alloc_chrdev_region(&stepMotorDev.devid,0, drvCNT,drvName);
+    stepMotorDev.major = MAJOR(stepMotorDev.devid);
+    printk(KERN_DEBUG"major id = %d",stepMotorDev.major);
     /* 2、注册设备 */
     cdev_init(&stepMotorDev.cdev,&stepMotor_ops);
     err = cdev_add(&stepMotorDev.cdev, stepMotorDev.devid, drvCNT);
-    if(!err)
+    if(err)
     {
+        printk(KERN_ERR"******stepMotor cdev_add error!******\n");
         stepMotor_ProbErr(0);
         return -EINVAL;
     }  
@@ -261,6 +254,7 @@ static int stepMotor_probe(struct platform_device *pdev)
     stepMotorDev.class = class_create(THIS_MODULE, drvName);
     if(IS_ERR(stepMotorDev.class))
     {
+        printk(KERN_ERR"******stepMotor class_create error!******\n");
         stepMotor_ProbErr(1);
         return PTR_ERR(stepMotorDev.class);
     }    
@@ -268,10 +262,10 @@ static int stepMotor_probe(struct platform_device *pdev)
     stepMotorDev.device = device_create(stepMotorDev.class,NULL,stepMotorDev.devid,NULL,"myMotor");
     if(IS_ERR(stepMotorDev.device))
     {
+        printk(KERN_ERR"******stepMotor device_create error!******\n");
         stepMotor_ProbErr(2);
         return PTR_ERR(stepMotorDev.device);
     }
-    /* 获取设备树中的gpio 需要在设备树节点中定义xxx-gpios*/
     stepMotorDev.ch1_a = gpiod_get(&pdev->dev, "ch1_a", 0);
     if (IS_ERR(stepMotorDev.ch1_a)) {		dev_err(&pdev->dev, "Failed to get GPIO for ch1_a\n");	stepMotor_ProbErr(3);	return PTR_ERR(stepMotorDev.ch1_a);	}
     stepMotorDev.ch1_b = gpiod_get(&pdev->dev, "ch1_b", 0);        
@@ -283,13 +277,13 @@ static int stepMotor_probe(struct platform_device *pdev)
     
     /* 设置GPIO模式 */
     err = gpiod_direction_output(stepMotorDev.ch1_a,0);
-    if(err <0) { printk( KERN_ERR "can't set mode ch1_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
+            if(err <0) { printk( KERN_ERR "can't set mode ch1_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch1_b,0);
-    if(err <0) { printk( KERN_ERR "can't set mode ch1_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
+            if(err <0) { printk( KERN_ERR "can't set mode ch1_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch2_a,0);
-    if(err <0) { printk( KERN_ERR "can't set mode ch2_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
+            if(err <0) { printk( KERN_ERR "can't set mode ch2_a!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     err = gpiod_direction_output(stepMotorDev.ch2_b,0);
-    if(err <0) { printk( KERN_ERR "can't set mode ch2_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
+            if(err <0) { printk( KERN_ERR "can't set mode ch2_b!\n");   stepMotor_ProbErr(6);   return -EINVAL; }
     /* 将电机设置为待机状态 */
     stepMotor_stop();
     /* 设置指针 */
@@ -298,9 +292,10 @@ static int stepMotor_probe(struct platform_device *pdev)
 }
 
 static int stepMotor_remove(struct platform_device *pdev)
-{
-    stepMotor_ProbErr(6);
-    return 0;
+{   
+    int err;
+    err = stepMotor_ProbErr(6);
+    return err;
 }
 
 /* platform_driver */
