@@ -1,0 +1,25 @@
+//在设备树文件中添加以下两个节点    
+/{
+    mySTEPmotor {
+        pinctrl-names = "default";
+        compatible = "fsl,my_stepMotor_drv";
+        pinctrl-0 = <&pinctrl_stepMotor>; 
+        status = "okay";
+
+        ch1_a-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
+        ch1_b-gpios = <&gpio4 20 GPIO_ACTIVE_HIGH>;
+        ch2_a-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+        ch2_b-gpios = <&gpio4 22 GPIO_ACTIVE_HIGH>;
+    };
+}
+
+&iomuxc {
+        pinctrl_stepMotor: stepMotor {                /*!< Function assigned for the core: Cortex-A7[ca7] */
+        fsl,pins = <
+            MX6UL_PAD_CSI_DATA00__GPIO4_IO21           0x000010B0
+            MX6UL_PAD_CSI_DATA01__GPIO4_IO22           0x000010B0
+            MX6UL_PAD_CSI_HSYNC__GPIO4_IO20            0x000010B0
+            MX6UL_PAD_CSI_VSYNC__GPIO4_IO19            0x000010B0
+        >;
+        };
+}
